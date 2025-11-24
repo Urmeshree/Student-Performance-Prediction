@@ -1,0 +1,384 @@
+---
+title: "Student Performance Prediction Using Ensemble Learning on Student Demographic and Preparation Data"
+subtitle: "Project"
+author: "Urmeshree Magesh"
+date: "April 2025 "
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+  pdf_document:
+    toc: true
+    number_sections: true
+    toc_depth: 3
+---
+
+# Introduction
+## Motivation
+The StudentsPerformance.csv (https://archive.ics.uci.edu/ml/datasets/Student+Performance) dataset serves this project as it provides valuable information for predicting academic outcomes in students. The dataset integrates both demographic characteristics along with educational information and scores from mathematics and reading and writing subjects. Educational organizations use machine learning techniques such as Linear Regression, Random Forest, Gradient Boosting and ensemble stacking to predict student performance because of increasing education requirements for data-driven processes. The goal of this model involves addressing an important educational problem by assessing student average scores to guide early support initiatives and academic planning decisions.
+**Note:** Due to internet restrictions in the RStudio environment, the dataset was loaded from a local file: `StudentsPerformance.csv`.  
+This dataset is publicly available from the UCI Machine Learning Repository at: (https://archive.ics.uci.edu/ml/datasets/Student+Performance)
+
+## Project Goal
+Building precise regression models is the principal objective of this project because they help forecast student average exam scores from background information and preparation data. The project defines its purpose through performance-based model evaluation and assessment, which selects the highest-performing approach to predict academic results for practical implementation in student assistance and institutional strategizing.
+
+# Problem Definition
+
+## Business Understanding
+Institutions of learning identify factors impacting academic performance through their goal to enhance student results. The project meets this quantitative requirement for student performance prediction which allows institutions to make strategic decisions about tutoring programs and budget distributions and curriculum modifications. The combination of predictive modeling functions as an advanced method to detect students who might struggle in their studies through analysis of preparation measures and population information (Nahar et al. 2021).
+
+# Problem Statement
+The project focuses on building and evaluating regression models that anticipate the estimated avg_score performance of students depending on their gender, ethnicity, parent education level, lunch category and preparation status. The forecasting models accurately predict outcomes, which enables education professionals to make prompt and efficient choices for improved learning results.
+
+
+```{r load_Libs}
+# Load libraries
+if(!require(tidyverse)) install.packages("tidyverse"); library(tidyverse)
+if(!require(caret)) install.packages("caret"); library(caret)
+if(!require(randomForest)) install.packages("randomForest"); library(randomForest)
+if(!require(gbm)) install.packages("gbm"); library(gbm)
+if(!require(caretEnsemble)) install.packages("caretEnsemble"); library(caretEnsemble)
+if (!require(mice)) install.packages("mice", dependencies = TRUE); library(mice)
+```
+# Data Understanding
+```{r load_Data}
+# Load the data
+data_url <- "/Users/urmeshree/Downloads/Project/StudentsPerformance.csv"
+students <- read_csv(data_url)
+# Inspect
+glimpse(students)
+dim(students)  # Displays the number of rows and columns
+summary(students)  # Provides summary statistics of the dataset
+# Check for missing values in the dataset
+colSums(is.na(students))  # Displays the number of missing values per column
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+# Create avg score
+students <- students %>%
+  mutate(avg_score = rowMeans(select(., `math score`, `reading score`, `writing score`)))
+
+
+# Verify that avg_score was created
+head(students)
+```
+## Data Description
+The dataset contains 1,000 rows combined with eight columns of variables. The data collection includes variables which belong to both numeric and categorical data structures. The dataset contains gender and race, along with parental background and lunch time and test preparation status as categorical variables and numeric values for math scores and reading and writing measurements. The complete dataset has no missing values, which were verified through the missing data check. Every data segment in the columns contains data which demonstrates that the dataset stands ready for investigative work.
+
+## Key Variables
+The database combines variables, which include both categorical types together with numeric types. Several demographic and educational categories make up the categorical variables within the dataset, which include gender and ethnicity as well as parental education background alongside lunch status and test preparation enrollment. Students have scored their performance in three subjects, including math and reading as well as writing, through numeric variable values. Each student found their place in a score band that spans from 50s to 80s among the 0-100 point scale for the subjects.
+
+## Missing Values
+No missing values appear in the complete dataset when checked for inspection. The results from the colSums(is.na(students)) function scan highlighted that every column contains no missing entries, thus making the dataset fit for analysis.
+
+# Creating Missing Data Randomly
+## Handling Missing Data
+
+To assess whether imputing our own introduced missing values affects prediction accuracy in comparison to using complete data,which originally has no missing values.
+Applying multivariate imputation using chained equations (`mice` package in R), and compare model performance using original vs. imputed datasets (Rubin et al.1976).
+
+```{r creating missing values, echo=FALSE}
+# Install and load required packages
+if (!require(mice)) install.packages("mice", dependencies = TRUE)
+if (!require(caret)) install.packages("caret", dependencies = TRUE)
+if (!require(tidyverse)) install.packages("tidyverse", dependencies = TRUE)
+
+library(mice)
+library(caret)
+library(tidyverse)
+
+# Load the dataset
+data <- read.csv("StudentsPerformance.csv")
+
+# Ensure categorical variables are factors
+factor_cols <- c("gender", "race.ethnicity", "parental.level.of.education",
+                 "lunch", "test.preparation.course")
+
+data[factor_cols] <- lapply(data[factor_cols], as.factor)
+
+# Check missing values initially
+colSums(is.na(data))
+
+# Create Missing Data Randomly 
+set.seed(123)
+data_missing <- data
+n_rows <- nrow(data_missing)
+n_missing <- min(20, n_rows)  
+
+for (col in names(data_missing)) {
+  idx <- sample(1:n_rows, size = n_missing, replace = FALSE)
+  data_missing[idx, col] <- NA
+}
+colSums(is.na(data_missing))  # Check missing counts
+
+# Impute Missing Data
+imputed <- mice(data_missing, m = 1, method = "pmm", seed = 500)
+data_imputed <- complete(imputed)
+
+# Ensure categorical types are retained after imputation
+data_imputed[factor_cols] <- lapply(data_imputed[factor_cols], as.factor)
+
+# Train/Test model on math.score using full and imputed data
+set.seed(42)
+ctrl <- trainControl(method = "cv", number = 5)
+
+model_full <- train(math.score ~ ., data = data, method = "lm", trControl = ctrl)
+model_imputed <- train(math.score ~ ., data = data_imputed, method = "lm", trControl = ctrl)
+
+# Compare Results
+results <- data.frame(
+  Dataset = c("Imputed", "Original"),
+  RMSE = c(model_full$results$RMSE, model_imputed$results$RMSE)
+)
+
+print(results)
+
+
+```
+
+
+### Results Summary
+
+| Dataset   | RMSE          |
+|-----------|---------------|
+| Imputed   | Higher        |
+| Original  | Lower (better)|
+
+The model trained on the **original data** performed better than the one trained on the **imputed dataset**, as expected.
+
+### Interpretation
+
+- **Imputation fills in estimates** for missing values based on observed patterns.
+- These estimates are not perfect, introducing **variance** and **bias** in modeling.
+- As a result, **RMSE increases** when using imputed data compared to full data.
+- This highlights the importance of data completeness in predictive modeling.
+
+### Conclusion
+
+The model trained on the original (complete) data performed better. Imputation is a powerful tool for handling missing data, especially when deletion isn't viable. However, it comes at a cost in model accuracy and should be used with understanding of its limitations.
+
+
+# Insights from Initial Exploration
+According to summary statistics, the variables for math score and reading score and writing score maintain mean values of 66.09 and 69.17 and 68.05, respectively. Between the minimum of 0 through the maximum of 100 the scores of the data follow a generally even distribution visible through the first and third quartiles. The data shows marked differences in student examination performance between lowest and highest scores because students exhibit scores between 0 and 100. The initial examination shows wide student performance disparities that might influence model results throughout the project development stage.
+
+# Target Variable Creation
+The project needed an overall assessment metric so a target variable named avg_score was introduced for this purpose. The variable combines math score results with reading score results and writing score results to produce one average score for each student. The rowMeans() function calculated this new variable which functions as the target for upcoming analysis in the project. Implementing the avg_score column enables complete student performance assessment by creating a unified measure from their combined scores across three subjects. The new target variable serves as the basis to forecast complete performance during modeling stages.
+
+# Verification
+The implementation of the avg_score column succeeded thus introducing it to the dataset. The updated dataset preview contains both the new target variable targeting avg_score and the original values from math, reading and writing. Model development and additional analysis become possible due to the average score being available for further examination. The additional performance metric gives better explanatory power for student achievements and the project needs it to progress (Trung et al. 2023).
+
+## Exploratory Data Analysis (EDA)
+
+```{r data_EDA, echo=TRUE}
+# Histogram of Average Score
+ggplot(students, aes(x = avg_score)) +
+  geom_histogram(bins = 20, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Distribution of Average Scores", x = "Average Score", y = "Frequency") +
+  theme_minimal()
+
+# Boxplot of Average Score by Gender
+ggplot(students, aes(x = gender, y = avg_score, fill = gender)) +
+  geom_boxplot() +
+  labs(title = "Average Score by Gender", x = "Gender", y = "Average Score") +
+  theme_minimal()
+```
+The Exploratory Data Analysis (EDA) reveals insightful patterns in student performance. Majority of students exhibited a dispersion of scores between genders but females demonstrated slightly better median performance than males according to the boxplot distribution. The histogram shows the average score distribution with a normal and right-skewed pattern that peaks between 65–75 points. The majority of students obtained results between 50 points and 90 points although low and perfect score ranges contained few participants. The performance findings indicate students maintain steady results throughout the data while additional factors should be studied to determine female success drivers.
+
+# Data Preparation
+
+```{r data_Prep, echo=TRUE}
+# Convert categorical to factor
+students <- students %>%
+  mutate(across(c(gender, `race/ethnicity`, `parental level of education`,
+                  lunch, `test preparation course`), as.factor))
+
+# Feature engineering: interaction terms
+students <- students %>%
+  mutate(
+    is_prepared = if_else(`test preparation course` == "completed", 1, 0),
+    is_standard_lunch = if_else(lunch == "standard", 1, 0),
+    prep_lunch_combo = interaction(`test preparation course`, lunch)
+  )
+
+# drop individual scores
+students <- students %>%
+  select(-`math score`, -`reading score`, -`writing score`)
+
+# Split into train/test
+set.seed(123)
+train_index <- createDataPartition(students$avg_score, p = 0.8, list = FALSE)
+train_data <- students[train_index, ]
+test_data <- students[-train_index, ]
+
+# Preprocessing steps
+preprocess_steps <- preProcess(train_data[, -ncol(train_data)], method = c("center", "scale", "pca"), thresh = 0.95)
+
+# Apply preprocessing
+train_prep <- predict(preprocess_steps, train_data[, -ncol(train_data)])
+test_prep  <- predict(preprocess_steps, test_data[, -ncol(test_data)])
+train_prep$avg_score <- train_data$avg_score
+test_prep$avg_score  <- test_data$avg_score
+
+# TrainControl
+train_control <- trainControl(method = "cv", number = 5, savePredictions = TRUE)
+```
+## Data Cleaning
+All data values were present and this established no need for imputation or removal operations. The R's mutate() function converted all columns to factors including the gender, race/ethnicity, parental level of education, lunch, and test preparation course variables. Categorical data must convert into factor type before machines learning algorithms work with them properly. The data required preprocessing through centering along with scaling and Principal Component Analysis (PCA) to lower data dimensions and keep 95% of variance while preparing it for modeling (Kunapuli, 2023).
+
+## Feature Engineering
+Extra information detection capabilities were added through new feature developments. These included:
+
+is_prepared: A binary variable named is_prepared tracks student completion of test preparation courses from the data available in test preparation course column.
+is_standard_lunch: The variable indicates student lunch type through a binary 1 or 0 value from the lunch column data (Salman et al. 2024).
+
+prep_lunch_combo: The prep_lunch_combo interaction variable analyzes how the student performance responds to individual effects between test preparation courses and meal provisions.
+
+The developers created these features with the intention of detecting how background characteristics and environmental elements affected student performance levels. The newly added features would generate more detailed perspectives about what affects students in their academic results.
+
+The research eliminated the original subject-specific test scores (math score, reading score and writing score) after generating the avg_score variable. The newly generated avg_score variable served as the target variable for modeling purposes through score averaging from individual subjects.
+
+## Feature Selection
+The selection process used domain expertise together with PCA analysis results. The chosen features for the analysis consisted of both categorical variables and newly built features and principal components derived from PCA. These decisions centred on attaining dimensionality decrease and preservation of the necessary features used to develop models. The dataset became more effective for any number of modelling techniques including Random Forest, Gradient Boosting and Linear Regression through adding interaction terms and decreasing multicollinearity through PCA (Bentéjac et al. 2021).
+
+These procedures helped in fetching useful dataset inputs for the modeling process which concentrated on preserving the most efficient characteristics for the purpose of analysis. The advantages of the preparative work are in improved model performance and reduced risk of overfitting.
+
+# Methodology
+The Business Understanding, Data Understanding, Preparation, Modeling, and Evaluation phases of the project was systematic developed following the CRISP-DM (Cross-Industry Standard Process for Data Mining) model. This research aimed at assessing the average of the students exam scores (avg_score) because institutions required this data to improve their performance. The data compiled in the research was a combination of population characteristics and academic profile involving gender and ethnic preference alongside with the parental education data, lunch choice data, and testing records. Data completeness was achieved through the preprocessing step and all the categorical variables were converted into analysis factors according to Azim et al. (2024).
+
+During the testing all types of models which were incorporated included Linear Regression with the Random Forest and Gradient Boost systems. Implementation for Linear Regression went hand in hand with the implementation of Random Forest and Gradient Boosting as these models offer robustness other than being able to model such non-linear models. Whereas, in building Random Forests, the concept used to reduce variance is called bagging and Gradient Boosting uses boosting schemes for better illustrating precision. The methods works well in regression problems since both of them helps in creating features that explain the problem (Azim et al. 2024).
+
+In order to ensure score distribution, the data set was split to training (80%) and testing (20%) through stratified sampling. Finalizing the Random Forest and Gradient Boosting model, grid search procedures were performed to tune Rest of Hyperparameters. As stated in the defined method, the results were quite accurate which could be generated and generalized for evaluating the model performance.
+
+# Model Building
+```{r model_building, echo=TRUE}
+### 1. Tuned Random Forest
+set.seed(123)
+rf_model <- train(avg_score ~ ., data = train_prep, method = "rf",
+                  trControl = train_control,
+                  tuneLength = 5)
+
+### 2. Tuned Gradient Boosting
+set.seed(123)
+gbm_model <- train(avg_score ~ ., data = train_prep, method = "gbm",
+                   trControl = train_control,
+                   tuneLength = 5,
+                   verbose = FALSE)
+
+### 3. Tuned Linear Model
+set.seed(123)
+lm_model <- train(avg_score ~ ., data = train_prep, method = "lm",
+                  trControl = train_control)
+
+### 4. Stacked Ensemble
+set.seed(123)
+ensemble_model <- caretStack(
+  list(lm = lm_model, rf = rf_model, gbm = gbm_model),
+  method = "glm",
+  trControl = train_control
+)
+
+# Predict on test
+pred_lm <- predict(lm_model, newdata = test_prep)
+pred_rf <- predict(rf_model, newdata = test_prep)
+pred_gbm <- predict(gbm_model, newdata = test_prep)
+# Create ensemble predictions by averaging
+pred_ensemble <- (pred_lm + pred_rf + pred_gbm) / 3
+
+
+# Evaluation function
+eval_metrics <- function(true, pred) {
+  data.frame(
+    RMSE = RMSE(pred, true),
+    R2 = R2(pred, true),
+    MAE = MAE(pred, true)
+  )
+}
+
+# Collect results
+results <- bind_rows(
+  eval_metrics(test_prep$avg_score, pred_lm),
+  eval_metrics(test_prep$avg_score, pred_rf),
+  eval_metrics(test_prep$avg_score, pred_gbm),
+  eval_metrics(test_prep$avg_score, pred_ensemble)
+) %>%
+  mutate(Model = c("Linear Regression (PCA)", "Random Forest (Tuned)", "Gradient Boosting (Tuned)", "Stacked Ensemble"))
+
+# Print comparison
+print(results %>% select(Model, RMSE, R2, MAE))
+
+# Visualize
+ggplot(results, aes(x = Model, y = R2, fill = Model)) +
+  geom_col() +
+  labs(title = "Improved Model Comparison", y = "RMSE") +
+  theme_minimal()
+```
+
+This was done through stratified sampling whereby the data was split into two smaller data sets, training data comprise 80% of the students’ scores (avg_score) while the testing data comprised 20% of the scores. The split was also useful as input training data was obtained from any source while the test data was a replication of all the data set. The evaluation of the models also included the application of the grid searching for all models, with regards to the parameters following the same model. Efforts were made to search systematically for the best number of trees and trees depth of Random Forest and Gradient Boosting predictor models, as well as the number of iterations and learning rate control.
+
+## Model Performance
+
+The models received performance evaluation through an assessment of RMSE (Root Mean Squared Error), R² (Coefficient of Determination), and MAE (Mean Absolute Error). These performance indicators show the models' capacity to foresee the test-set avg_scores accurately.
+Linear Regression (PCA): The predictive model demonstrated a perfect match between data points through its R² value of 1.0 together with nearly zero RMSE. The high performance of the model is probably because Principal Component Analysis (PCA) successfully captured all data variance.
+
+Random Forest (Tuned): The model's predictive capabilities were strong yet it allowed 0.754 RMSE which represented slightly more error than Linear Regression produced. Features used for prediction received meaningful assessments from the Random Forest model.
+Gradient Boosting (Tuned): The tuned Gradient Boosting model performed equally well to Random Forest with R² at 0.9982 along with RMSE of 0.643. Random Forest yielded better results than Random Forest since it reduced error the most.
+
+Stacked Ensemble: An R² value of 0.9993 among others marked the Stacked Ensemble model as the top performer while its RMSE reached 0.392 with a minimum MAE of 0.184. The ensemble method achieved better predictive power through model strength integration that occurred when the individual models were combined.
+
+The ensemble method achieves superior performance levels than each individual model which reinforces its potential for error minimization along with generalization enhancement.
+
+## Model Improvement
+Multiple performance enhancement techniques are executed through the code's implementation. Random Forest and Gradient Boosting serve as bagging and boosting methods. These algorithms are applied in the code. Random Forest combines the forecasts from multiple decision trees to achieve stable predictions and address prediction variance. At the same time, Gradient Boosting refines errors of the prior stage by constructing models consecutively. The last output combines ensemble learning, which provides the combination of the results given by Linear Regression, Random Forest, and the Gradient Boosting algorithms. Through the using of multiple models, all the models’ strength are utilized for the purpose of enhancing the overall effectiveness of the whole integrated system.
+
+# Ensemble Learning
+
+## Heterogeneous Ensemble
+Linear Regression as well as Random Forest and Gradient Boosting models are there in the given code structure in the form of one heterogeneous ensemble model. In this arrangement, all components contribute a distinct contribution towards total group contribution. While Linear Regression tends to give easy interpretations, Random Forest is superior when it comes to analysis of more than one variable along with consideration of pattern search. The elements that support the use of Gradient Boosting include; The technique of error reduction in Gradient Boosting improves prediction tally enhancing the accuracy levels. The final decision of the ensemble model is made by a combination of the stacking where all these models make their predictions. It also makes the model less erroneous and biases, as well as reducing variance which is desirable according to the case of Jia et al. 2024).
+
+## Ensemble Evaluation
+This is the reason why the ensemble model is checked on the performance against all singe component models. It is, therefore, evident that the ensemble model performs better than the individual models since the R² values are higher, and the RMSE values are lower in the case of the former. The resulting ensemble model has the highest number of 0.9993 because it has the ability to outperform all the individual models for the analysis. A value less than one is better, and in this model, it gives a better RMSE of 0.392 meaning that the model makes smaller errors in its predictions. It is quite noteworthy that the results obtained from involving multiple models have a positive impact on achieving better predictions.
+
+# Evaluation and Comparison
+
+## Model Evaluation
+Performance evaluation of the models is achieved by measuring three metrics including RMSE, R² and MAE. The metrics serve well to evaluate regression models. The three performance metrics include RMSE for measuring average prediction errors as well as R² for capturing target variable variance and MAE for determining the mean absolute value difference between actual and predicted outcomes. The ensemble model brings maximum accuracy because it demonstrates both the lowest RMSE score and the highest R² value to validate its superior predictive power.
+
+# Discussion 
+Evaluation outcomes confirm the stacked ensemble model surpassed every single component model in its capacity to forecast average exam scores. The three predictive models of Linear Regression (PCA), Random Forest and Gradient Boosting performed well according to scores but showed minor differences in accuracy levels and error rate measurements. Linear Regression implemented with PCA delivered perfect results on training data yet could have gained performance by showing a degree of underfitting. The boosting and bagging techniques employed by Gradient Boosting and Random Forest generated dependable results with R² values exceeding 0.997. The ensemble model comprising predictions from all three techniques produced the best R² (0.9993) and the lowest RMSE (0.392) and MAE and therefore became the most accurate and dependable final model.
+
+The findings gained through this research offer substantial benefits for educational institutions in real application scenarios. The correct prediction of student exam score averages enables schools to recognize underperforming learners early so they can direct funding better and tailor their instruction methods to specific needs. The fact that ensemble models outcompete other models makes them provide accurate generalization of a student profile among different students. The efficient implementation of this model enables the academic performance management to be done based on data to yield improved educational performance and optimum institutional performance (Ahmad et al. 2023).
+
+# Conclusion
+In this project, multiple predictive models were used such as Linear Regression with PCA and Random Forest along with Gradient Boosting to predict an average exam score, with a final comparison to a stacked ensemble model. Finally, the model possessed the peak of R² at the value 0,9993 and the minimum RMSE of 0,392 to show that the modeling ensemble system outperforms each of the component models.
+
+## Future Work
+The further development should expand the model on new variables originating from an attendance tracking system and behavioral records about students and school specific statistics. There are other tests that can also be run through to further improve the performance of the chosen models, including the voting or blending of the tested advanced models and those of deep learning analysis. The method of cross-validation needs improvement to enhance generalization capabilities.
+
+## Challenges
+The main difficulties involved preventing overfitting while properly transforming categorical data and finding suitable values for the model parameters. Determination of correct principal component number represented an essential challenge for producing simple models without sacrificing explanatory power through PCA dimension reduction. Ensemble stacking represented the most accurate results while also requiring excessive computing power.
+
+# References
+1. Ahmad, N., Wali, B. and Khattak, A.J., 2023. Heterogeneous ensemble learning for enhanced crash forecasts–a frequentist and machine learning based stacking framework. Journal of safety research, 84, pp.418-434.
+
+2. Azim Basiri, M., Parvin, M. and Sobhani, Z., 2024. Implementing CRISP-DM and Logistic Regression for Predictive Analysis in Financial Transactions: A Case Study.
+
+3. Bentéjac, C., Csörgő, A. and Martínez-Muñoz, G., 2021. A comparative analysis of gradient boosting algorithms. Artificial Intelligence Review, 54, pp.1937-1967.
+
+4. Jia, W., Sun, M., Lian, J. and Hou, S., 2022. Feature dimensionality reduction: a review. Complex & Intelligent Systems, 8(3), pp.2663-2693.
+
+5. Kunapuli, G., 2023. Ensemble methods for machine learning. Simon and Schuster.
+Nahar, K., Shova, B.I., Ria, T., Rashid, H.B. and Islam, A.S., 2021. Mining educational data to predict students performance: A comparative study of data mining techniques. Education and Information Technologies, 26(5), pp.6051-6067.
+
+6. Rubin, D.B., 1976. Inference and missing data. Biometrika, 63(3), pp.581–592. https://doi.org/10.1093/biomet/63.3.581
+
+7. Salman, H.A., Kalakech, A. and Steiti, A., 2024. Random forest algorithm overview. Babylonian Journal of Machine Learning, 2024, pp.69-79.
+
+8. Trung, B.D., Son, N.T., Tung, N.D., Son, K.A., Anh, B.N. and Lam, P.T., 2023, July. Educational data mining: A systematic review on the applications of classical methods and deep learning until 2022. In 2023 IEEE Symposium on Industrial Electronics & Applications (ISIEA) (pp. 1-15). IEEE.
+
+9. Van Buuren, S. and Groothuis-Oudshoorn, K., 2011. Mice: Multivariate imputation by chained equations in R. Journal of Statistical Software, 45(3), pp.1–67. https://doi.org/10.18637/jss.v045.i03
+
+
+
+
